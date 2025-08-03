@@ -1,0 +1,42 @@
+name: Create VPS
+
+on:
+  workflow_dispatch:          # ✅ Manual "Run workflow" button
+  repository_dispatch:        # ✅ Can still be triggered by API or other workflows
+    types: [create-vps]
+
+jobs:
+  start-vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+
+    steps:
+      - name: ⬇️ Checkout
+        uses: actions/checkout@v3
+
+      - name: 📁 Create dirs
+        run: mkdir -p links .backup
+
+      - name: 💾 Restore backup
+        run: |
+          name="${{ github.event.client_payload.vps_name }}"
+          if [ "${{ github.event.client_payload.backup }}" == "true" ]; then
+            echo "📦 Restoring backup..."
+            unzip ".backup/$name.zip" -d . || echo "⚠️ No backup to restore."
+          fi
+
+      - name: 🔐 Start tmate session
+        run: |
+          echo "⚙️ Launching tmate..."
+          sudo apt update && sudo apt install -y tmate
+          tmate -S /tmp/tmate.sock new-session -d
+          tmate -S /tmp/tmate.sock wait tmate-ready
+          SSH=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
+          echo "$SSH" > "links/${{ github.event.client_payload.vps_name || 'manual-vps' }}.txt"
+          echo "✅ SSH Ready: $SSH"
+          sleep 60  # give time for GitHub to sync
+
+      - name: ⏳ Keep session alive
+        run: |
+          echo "⏳ Keeping session alive for 6 hours..."
+          sleep $((360 * 60))
